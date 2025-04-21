@@ -33,7 +33,6 @@ def preprocess_codepoint_open(data_path):
 if __name__ == "__main__":
     gpkg_file = "datasets/codepo_gb.gpkg"
     output_path = "postcode_maps"
-    image_output_path = "images"
 
     print("Preprocessing codepoint open data...")
     postcode_data = preprocess_codepoint_open(gpkg_file)
@@ -45,31 +44,6 @@ if __name__ == "__main__":
     generator.load_data_from_dataframe(postcode_data)
 
     print("Generating maps..")
-    generator.create_maps(levels=["XX","XXNN"])
+    generator.create_maps(levels=["XXNN-N"])
 
     print("Maps created.")
-    level = "XX"
-    shapefile_path = os.path.join(output_path, f"postcode-{level}.shp")
-
-    if os.path.exists(f"{shapefile_path}.shp"):
-        gdf = gpd.read_file(shapefile_path)
-        
-        # Create a simple visualization
-        fig, ax = plt.subplots(figsize=(10, 12))
-        gdf.plot(
-            column='color',
-            categorical=True,
-            linewidth=0.5,
-            edgecolor='black',
-            ax=ax
-        )
-        
-        ax.set_title(f'UK Postcode Areas ({level})')
-        ax.set_axis_off()
-        
-        # Save the figure
-        plt.savefig(os.path.join(image_output_path, f"map_{level}.png"), dpi=300)
-        print(f"Map visualization saved to {image_output_path}/map_{level}.png")
-        
-        # Show the plot
-        plt.show()

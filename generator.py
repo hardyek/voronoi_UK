@@ -7,6 +7,7 @@ import os
 from pyproj import CRS, Transformer
 from shapely.geometry import Polygon
 import matplotlib.pyplot as plt
+from shapely.ops import unary_union
 
 class Site:
     def __init__(self, x, y, tag=""):
@@ -159,7 +160,7 @@ class PostcodeMapGenerator:
             except Exception as e:
                 # Sometimes invalid polygons can occur
                 pass
-            
+
         print(f"Created {len(regions_polys)} finite polygons")
         return regions_polys
 
@@ -178,24 +179,35 @@ class PostcodeMapGenerator:
             print("Voronoi diagram not generated. Generating now...")
             self.generate_voronoi()
 
-        #  Get finite polygons from Voronoi regions
+        # Get finite polygons from Voronoi regions
         print("Generating finite polygons...")
         regions_polys = self._finite_polygons()
 
-        postcode_polys = {}
+         # First group polygons by pattern without unionizing
+        print("Grouping polygons by postcode pattern...")
+        pattern_poly_lists = {}
 
-        # Group polygons by postcode pattern
-        print("Beginning to group polygons by postcode pattern...")
-        for point_idx, poly in tqdm(regions_polys, desc=f"Processing {level}", unit="polygons"):
+        for point_idx, poly in tqdm(regions_polys, desc=f"Grouping {level}", unit="polygons"):
+            # Get the pattern for this point
             postcode = self.data.iloc[point_idx]["postcode"]
             pattern = self._get_postcode_pattern(postcode, level)
-
+            
+            # Only include valid patterns
             if pattern:
-                if pattern in postcode_polys:
-                    postcode_polys[pattern] = postcode_polys[pattern].union(poly)
-                else:
-                    postcode_polys[pattern] = poly
+                if pattern not in pattern_poly_lists:
+                    pattern_poly_lists[pattern] = []
+                pattern_poly_lists[pattern].append(poly)
 
+        # Now unionize the polygons for each pattern more efficiently
+        print("Unionizing polygons for each pattern...")
+        postcode_polys = {}
+
+        for pattern, poly_list in tqdm(pattern_poly_lists.items(), desc="Creating unions", unit="patterns"):
+            # Use unary_union which is faster than sequential unions
+            postcode_polys[pattern] = unary_union(poly_list)
+    
+        print(f"Created {len(postcode_polys)} unique {level} patterns")
+        
         gdf = gpd.GeoDataFrame(
             {
             "postcode": list(postcode_polys.keys()), 
@@ -254,7 +266,7 @@ class PostcodeMapGenerator:
 
         centroids = gdf_bng.copy()
         centroids["geometry"] = centroids["geometry"].centroid
-        centroids_path = os.path.join(self.output_dir, f"postcode-{level}_cen")
+        centroids_path = os.path.join(self.output_path, f"postcode-{level}_cen")
         centroids.to_file(centroids_path)
 
         return output_path
@@ -291,33 +303,3 @@ class PostcodeMapGenerator:
             print("Level", level, "created and saved to", path)
             
         return result
-    
-    def plot_chloropleth(self, data_gdf, value_column, title, output_path=None, figsize=(12,10), cmap="viridis", basemap=False):
-        plot_gdf = data_gdf.to_crs(self.web_mercator_crs)
-
-        fig, ax = plt.subplots(1, 1, figsize=figsize)
-
-        plot_gdf.plot(
-            column = value_column,
-            cmap = cmap,
-            legend = True,
-            ax = ax,
-            legend_kwds = {"label": value_column, "orientation": "horizontal"},
-        )
-
-        if basemap:
-            try:
-                import contextily as ctx
-                ctx.add_basemap(ax, crs=plot_gdf.crs.to_string())
-            except ImportError:
-                print("Contextily is not installed. Basemap will not be added.")
-            except Exception as e:
-                print(f"Error adding basemap: {e}")
-
-        ax.set_title(title, fontsize=15)
-        ax.set_axis_off()
-
-        if output_path:
-            plt.savefig(output_path, bbox_inches="tight", dpi=300)
-        
-        return fig
