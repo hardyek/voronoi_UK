@@ -44,6 +44,6 @@ if __name__ == "__main__":
     generator.load_data_from_dataframe(postcode_data)
 
     print("Generating maps..")
-    generator.create_maps(levels=["XXNN-N"])
+    generator.create_maps(levels=["XX","XXNN","XXNN-N"])
 
     print("Maps created.")
